@@ -16,7 +16,7 @@
     </lookupFilter>
     <referenceTo>Lead</referenceTo>
     <relationshipLabel>CleverTap Events</relationshipLabel>
-    <relationshipName>CT_Events</relationshipName> <!-- Changed from CleverTap_Events -->
+    <relationshipName>CleverTap_Events</relationshipName>
     <required>false</required>
     <trackTrending>false</trackTrending>
     <type>Lookup</type>

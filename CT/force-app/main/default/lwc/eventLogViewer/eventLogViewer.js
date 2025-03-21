@@ -91,14 +91,14 @@ export default class EventLogViewer extends NavigationMixin(LightningElement) {
     }
     
     get leadRecordUrl() {
-        if (this.selectedEvent && Object.prototype.hasOwnProperty.call(this.selectedEvent, 'Lead__c') && this.selectedEvent.Lead__c) {
+        if (this.selectedEvent && this.selectedEvent.Lead__c) {
             return `/lightning/r/Lead/${this.selectedEvent.Lead__c}/view`;
         }
         return '';
     }
     
     get contactRecordUrl() {
-        if (this.selectedEvent && Object.prototype.hasOwnProperty.call(this.selectedEvent, 'Contact__c') && this.selectedEvent.Contact__c) {
+        if (this.selectedEvent && this.selectedEvent.Contact__c) {
             return `/lightning/r/Contact/${this.selectedEvent.Contact__c}/view`;
         }
         return '';
@@ -154,21 +154,19 @@ export default class EventLogViewer extends NavigationMixin(LightningElement) {
         }
     }
     
+    // Process the log data
     processLogData(data) {
         this.eventLogs = data.map(log => {
             // Determine record type and name
             let recordType = '';
             let recordName = '';
             
-            // Check if Lead__c field exists on the record before accessing it
-            if (Object.prototype.hasOwnProperty.call(log, 'Lead__c') && log.Lead__c) {
+            if (log.Lead__c) {
                 recordType = 'Lead';
-                recordName = log.Lead__r ? log.Lead__r.Name : '';
-            } 
-            // Check if Contact__c field exists on the record before accessing it
-            else if (Object.prototype.hasOwnProperty.call(log, 'Contact__c') && log.Contact__c) {
+                recordName = log.Lead__r.Name;
+            } else if (log.Contact__c) {
                 recordType = 'Contact';
-                recordName = log.Contact__r ? log.Contact__r.Name : '';
+                recordName = log.Contact__r.Name;
             }
             
             // Determine status class

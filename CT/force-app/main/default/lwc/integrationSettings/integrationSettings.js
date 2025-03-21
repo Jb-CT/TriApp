@@ -26,9 +26,12 @@ export default class IntegrationSettings extends NavigationMixin(LightningElemen
     @track selectedConnectionName;
     
     regionOptions = [
+        { label: 'Europe (Default)', value: 'EU' },
         { label: 'India', value: 'IN' },
+        { label: 'Singapore', value: 'SG' },
         { label: 'United States', value: 'US' },
-        { label: 'Europe', value: 'EU' }
+        { label: 'Indonesia', value: 'ID' },
+        { label: 'Middle East (UAE)', value: 'UAE' }
     ];
 
     showNewConnectionModal = false;
