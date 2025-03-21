@@ -26,6 +26,7 @@ export default class IntegrationSyncConfig extends LightningElement {
     @track showBasicConfig = true;
     @track showFieldMapping = false;
     @track syncId;
+    @track savedToDatabase = false;
 
     connectedCallback() {
         // Set the connection ID from the API property
@@ -35,6 +36,7 @@ export default class IntegrationSyncConfig extends LightningElement {
         
         if (this.mode === 'edit' && this.recordId) {
             this.syncId = this.recordId;
+            this.savedToDatabase = true;
             this.loadSyncConfiguration();
         }
     }
@@ -127,40 +129,37 @@ export default class IntegrationSyncConfig extends LightningElement {
         this.dispatchEvent(new CustomEvent('cancel'));
     }
 
+    // Modified to not save the configuration yet
     async handleNext() {
         if (this.validateForm()) {
             try {
                 this.isLoading = true;
                 
-                // Ensure status is set for new configurations
-                if (this.mode === 'new') {
-                    this.syncData.status = 'Active';
-                }
-                
+                // If we're in edit mode, the record already exists
                 if (this.mode === 'edit') {
+                    // For edit mode, we can update the configuration now
                     await updateSyncConfiguration({
                         syncId: this.recordId,
                         syncData: JSON.stringify(this.syncData)
                     });
                     this.syncId = this.recordId;
                     this.showToast('Success', 'Sync configuration updated successfully', 'success');
-                } else {
-                    const result = await createSyncConfiguration({
-                        syncData: JSON.stringify(this.syncData)
-                    });
-                    this.syncId = result;
-                    this.recordId = result;
-                    this.showToast('Success', 'Sync configuration created successfully', 'success');
+                    this.savedToDatabase = true;
                 }
                 
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
+                // Just switch to the field mapping view without creating a new record
                 this.showBasicConfig = false;
                 this.showFieldMapping = true;
 
                 const fieldMappingComponent = this.template.querySelector('c-integration-field-mapping');
                 if (fieldMappingComponent) {
-                    fieldMappingComponent.syncId = this.syncId;
+                    // Only provide syncId if it's already saved to the database (edit mode)
+                    if (this.savedToDatabase) {
+                        fieldMappingComponent.syncId = this.syncId;
+                    }
+                    // Pass the entity types for reference
+                    fieldMappingComponent.sourceEntity = this.syncData.sourceEntity;
+                    fieldMappingComponent.targetEntity = this.syncData.targetEntity;
                 }
             } catch (error) {
                 const action = this.mode === 'edit' ? 'update' : 'create';
@@ -193,15 +192,62 @@ export default class IntegrationSyncConfig extends LightningElement {
         return isValid;
     }
     
-    // Modified to dispatch save event instead of navigating
-    handleMappingSave() {
-        this.showToast('Success', 'Field mappings saved successfully', 'success');
-        this.dispatchEvent(new CustomEvent('save'));
+    // Modified to save the configuration first, then save field mappings
+    async handleMappingSave() {
+        try {
+            this.isLoading = true;
+            
+            // First, save the basic configuration if it's not yet saved
+            if (!this.savedToDatabase) {
+                // Ensure status is set
+                this.syncData.status = 'Active';
+                
+                // Save the configuration
+                const result = await createSyncConfiguration({
+                    syncData: JSON.stringify(this.syncData)
+                });
+                
+                this.syncId = result;
+                this.recordId = result;
+                this.savedToDatabase = true;
+            }
+            
+            // Get the field mapping component
+            const fieldMappingComponent = this.template.querySelector('c-integration-field-mapping');
+            if (fieldMappingComponent) {
+                // Set the syncId first
+                fieldMappingComponent.syncId = this.syncId;
+                
+                // Then call the explicit save method on the field mapping component
+                await fieldMappingComponent.saveFieldMappings();
+            }
+            
+            this.showToast('Success', 'Sync configuration and field mappings saved successfully', 'success');
+            this.dispatchEvent(new CustomEvent('save'));
+        } catch (error) {
+            const action = this.mode === 'edit' ? 'update' : 'create';
+            this.showToast('Error', `Failed to ${action} configuration: ${error.message || error.body?.message || 'Unknown error'}`, 'error');
+        } finally {
+            this.isLoading = false;
+        }
     }
 
+    // Modified to handle complete cancellation
     handleMappingCancel() {
-        this.showBasicConfig = true;
-        this.showFieldMapping = false;
+        // If this is a new sync and we haven't saved to the database,
+        // we just return to the basic config screen
+        if (!this.savedToDatabase) {
+            this.showBasicConfig = true;
+            this.showFieldMapping = false;
+        } else if (this.mode === 'new') {
+            // If we've already saved a new config but want to cancel,
+            // we should dispatch the cancel event to leave the component entirely
+            this.dispatchEvent(new CustomEvent('cancel'));
+        } else {
+            // For edit mode, we can just go back to basic config
+            this.showBasicConfig = true;
+            this.showFieldMapping = false;
+        }
     }
 
     showToast(title, message, variant) {

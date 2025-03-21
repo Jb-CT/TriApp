@@ -28,7 +28,54 @@ export default class IntegrationFieldMapping extends LightningElement {
     connectedCallback() {
         if (this.sourceEntity) {
             this.loadSourceFields();
-            this.loadExistingMappings();
+            // Only load existing mappings if a syncId is provided
+            if (this.syncId) {
+                this.loadExistingMappings();
+            }
+        }
+    }
+
+    // Add this public method that can be called by the parent component
+    @api
+    async saveFieldMappings() {
+        if (!this.validateMappings()) {
+            return false;
+        }
+
+        try {
+            if (!this.syncId) {
+                this.showToast('Error', 'Missing syncId for field mappings', 'error');
+                return false;
+            }
+
+            const mappingData = {
+                syncId: this.syncId,
+                mappings: [
+                    {
+                        CleverTap_Field__c: 'customer_id',
+                        Salesforce_Field__c: this.mandatoryFieldMapping.customer_id,
+                        Data_Type__c: 'Text',
+                        Is_Mandatory__c: true
+                    },
+                    ...this.additionalMappings
+                        .filter(m => m.targetField && m.sourceField)
+                        .map(m => ({
+                            CleverTap_Field__c: m.targetField,
+                            Salesforce_Field__c: m.sourceField,
+                            Data_Type__c: m.dataType || 'Text',
+                            Is_Mandatory__c: false
+                        }))
+                ]
+            };
+
+            await saveFieldMappings({ 
+                mappingData: JSON.stringify(mappingData) 
+            });
+            
+            return true;
+        } catch (error) {
+            this.showToast('Error', 'Failed to save mappings: ' + (error.body?.message || error.message || 'Unknown error'), 'error');
+            return false;
         }
     }
 
@@ -53,8 +100,10 @@ export default class IntegrationFieldMapping extends LightningElement {
         if (!this.syncId) return;
 
         try {
+            this.isLoading = true;
             const existingMappings = await getExistingMappings({ syncId: this.syncId });
-            if (existingMappings) {
+            
+            if (existingMappings && existingMappings.length > 0) {
                 const mandatoryMapping = existingMappings.find(m => m.Is_Mandatory__c);
                 if (mandatoryMapping) {
                     this.mandatoryFieldMapping.customer_id = mandatoryMapping.Salesforce_Field__c;
@@ -71,6 +120,8 @@ export default class IntegrationFieldMapping extends LightningElement {
             }
         } catch (error) {
             this.showToast('Error', 'Failed to load existing mappings: ' + (error.body?.message || error.message || 'Unknown error'), 'error');
+        } finally {
+            this.isLoading = false;
         }
     }
 
@@ -122,52 +173,18 @@ export default class IntegrationFieldMapping extends LightningElement {
         this.additionalMappings = this.additionalMappings.filter((_, i) => i !== index);
     }
 
+    // This is now just a UI handler that calls the parent to save everything
     async handleSave() {
         if (!this.validateMappings()) {
             return;
         }
 
-        try {
-            this.isLoading = true;
-
-            const mappingData = {
-                syncId: this.syncId,
-                mappings: [
-                    {
-                        CleverTap_Field__c: 'customer_id',
-                        Salesforce_Field__c: this.mandatoryFieldMapping.customer_id,
-                        Data_Type__c: 'Text',
-                        Is_Mandatory__c: true
-                    },
-                    ...this.additionalMappings
-                        .filter(m => m.targetField && m.sourceField)
-                        .map(m => ({
-                            CleverTap_Field__c: m.targetField,
-                            Salesforce_Field__c: m.sourceField,
-                            Data_Type__c: m.dataType || 'Text',
-                            Is_Mandatory__c: false
-                        }))
-                ]
-            };
-
-            await saveFieldMappings({ 
-                mappingData: JSON.stringify(mappingData) 
-            });
-
-            this.showToast('Success', 'Field mappings saved successfully', 'success');
-
-            // Instead of navigating, dispatch a save event
-            this.dispatchEvent(new CustomEvent('save'));
-
-        } catch (error) {
-            this.showToast('Error', 'Failed to save mappings: ' + (error.body?.message || error.message || 'Unknown error'), 'error');
-        } finally {
-            this.isLoading = false;
-        }
+        // Dispatch a save event to notify the parent component to handle the saving process
+        this.dispatchEvent(new CustomEvent('save'));
     }
 
     handleBack() {
-        // Just dispatch an event for the parent to handle
+        // Dispatch a cancel event for the parent to handle
         this.dispatchEvent(new CustomEvent('cancel'));
     }
 
