@@ -10,7 +10,10 @@ export default class IntegrationFieldMapping extends LightningElement {
     @api targetEntity;
 
     @track sourceFields = [];
-    @track mandatoryFieldMapping = { customer_id: '' };
+    @track mandatoryFieldMapping = { 
+        customer_id: '',
+        event_name: '' // Added event_name field
+    };
     @track additionalMappings = [];
     @track isLoading = false;
 
@@ -24,58 +27,20 @@ export default class IntegrationFieldMapping extends LightningElement {
     get showEmptyState() {
         return this.additionalMappings.length === 0;
     }
-
+    
+    get isEventEntity() {
+        return this.targetEntity === 'event';
+    }
+    
     connectedCallback() {
         if (this.sourceEntity) {
             this.loadSourceFields();
-            // Only load existing mappings if a syncId is provided
-            if (this.syncId) {
-                this.loadExistingMappings();
-            }
+            this.loadExistingMappings();
         }
-    }
-
-    // Add this public method that can be called by the parent component
-    @api
-    async saveFieldMappings() {
-        if (!this.validateMappings()) {
-            return false;
-        }
-
-        try {
-            if (!this.syncId) {
-                this.showToast('Error', 'Missing syncId for field mappings', 'error');
-                return false;
-            }
-
-            const mappingData = {
-                syncId: this.syncId,
-                mappings: [
-                    {
-                        CleverTap_Field__c: 'customer_id',
-                        Salesforce_Field__c: this.mandatoryFieldMapping.customer_id,
-                        Data_Type__c: 'Text',
-                        Is_Mandatory__c: true
-                    },
-                    ...this.additionalMappings
-                        .filter(m => m.targetField && m.sourceField)
-                        .map(m => ({
-                            CleverTap_Field__c: m.targetField,
-                            Salesforce_Field__c: m.sourceField,
-                            Data_Type__c: m.dataType || 'Text',
-                            Is_Mandatory__c: false
-                        }))
-                ]
-            };
-
-            await saveFieldMappings({ 
-                mappingData: JSON.stringify(mappingData) 
-            });
-            
-            return true;
-        } catch (error) {
-            this.showToast('Error', 'Failed to save mappings: ' + (error.body?.message || error.message || 'Unknown error'), 'error');
-            return false;
+        
+        // Set default event name based on source entity (only for event entity type)
+        if (this.isEventEntity && !this.mandatoryFieldMapping.event_name) {
+            this.mandatoryFieldMapping.event_name = 'sf_' + this.sourceEntity?.toLowerCase();
         }
     }
 
@@ -100,15 +65,21 @@ export default class IntegrationFieldMapping extends LightningElement {
         if (!this.syncId) return;
 
         try {
-            this.isLoading = true;
             const existingMappings = await getExistingMappings({ syncId: this.syncId });
-            
-            if (existingMappings && existingMappings.length > 0) {
-                const mandatoryMapping = existingMappings.find(m => m.Is_Mandatory__c);
-                if (mandatoryMapping) {
-                    this.mandatoryFieldMapping.customer_id = mandatoryMapping.Salesforce_Field__c;
+            if (existingMappings) {
+                // Process customer_id mapping
+                const customerIdMapping = existingMappings.find(m => m.CleverTap_Field__c === 'sfmc_customer_id' && m.Is_Mandatory__c);
+                if (customerIdMapping) {
+                    this.mandatoryFieldMapping.customer_id = customerIdMapping.Salesforce_Field__c;
+                }
+                
+                // Process event_name mapping
+                const eventNameMapping = existingMappings.find(m => m.CleverTap_Field__c === 'evtName' && m.Is_Mandatory__c);
+                if (eventNameMapping) {
+                    this.mandatoryFieldMapping.event_name = eventNameMapping.Salesforce_Field__c;
                 }
 
+                // Process additional mappings
                 this.additionalMappings = existingMappings
                     .filter(m => !m.Is_Mandatory__c)
                     .map(m => ({
@@ -120,13 +91,15 @@ export default class IntegrationFieldMapping extends LightningElement {
             }
         } catch (error) {
             this.showToast('Error', 'Failed to load existing mappings: ' + (error.body?.message || error.message || 'Unknown error'), 'error');
-        } finally {
-            this.isLoading = false;
         }
     }
 
-    handleMandatoryFieldChange(event) {
+    handleCustomerIdChange(event) {
         this.mandatoryFieldMapping.customer_id = event.detail.value;
+    }
+    
+    handleEventNameChange(event) {
+        this.mandatoryFieldMapping.event_name = event.target.value;
     }
 
     handleTargetFieldChange(event) {
@@ -173,18 +146,67 @@ export default class IntegrationFieldMapping extends LightningElement {
         this.additionalMappings = this.additionalMappings.filter((_, i) => i !== index);
     }
 
-    // This is now just a UI handler that calls the parent to save everything
     async handleSave() {
         if (!this.validateMappings()) {
             return;
         }
 
-        // Dispatch a save event to notify the parent component to handle the saving process
-        this.dispatchEvent(new CustomEvent('save'));
+        try {
+            this.isLoading = true;
+
+            // Prepare the mapping data
+            const mappings = [
+                // Customer ID mapping
+                {
+                    CleverTap_Field__c: 'sfmc_customer_id',
+                    Salesforce_Field__c: this.mandatoryFieldMapping.customer_id,
+                    Data_Type__c: 'Text',
+                    Is_Mandatory__c: true
+                }
+            ];
+            
+            // Only include event name mapping for event entity type
+            if (this.isEventEntity) {
+                mappings.push({
+                    CleverTap_Field__c: 'evtName',
+                    Salesforce_Field__c: this.mandatoryFieldMapping.event_name,
+                    Data_Type__c: 'Text',
+                    Is_Mandatory__c: true
+                });
+            }
+            
+            // Prepare the complete mapping data
+            const mappingData = {
+                syncId: this.syncId,
+                mappings: [
+                    ...mappings,
+                    // Additional mappings
+                    ...this.additionalMappings
+                        .filter(m => m.targetField && m.sourceField)
+                        .map(m => ({
+                            CleverTap_Field__c: m.targetField,
+                            Salesforce_Field__c: m.sourceField,
+                            Data_Type__c: m.dataType || 'Text',
+                            Is_Mandatory__c: false
+                        }))
+                ]
+            };
+
+            await saveFieldMappings({ 
+                mappingData: JSON.stringify(mappingData) 
+            });
+
+            this.showToast('Success', 'Field mappings saved successfully', 'success');
+            this.dispatchEvent(new CustomEvent('save'));
+
+        } catch (error) {
+            this.showToast('Error', 'Failed to save mappings: ' + (error.body?.message || error.message || 'Unknown error'), 'error');
+        } finally {
+            this.isLoading = false;
+        }
     }
 
     handleBack() {
-        // Dispatch a cancel event for the parent to handle
         this.dispatchEvent(new CustomEvent('cancel'));
     }
 
@@ -194,7 +216,13 @@ export default class IntegrationFieldMapping extends LightningElement {
 
     validateMappings() {
         if (!this.mandatoryFieldMapping.customer_id) {
-            this.showToast('Error', 'Please map the mandatory identifier field', 'error');
+            this.showToast('Error', 'Please map the mandatory customer ID field', 'error');
+            return false;
+        }
+        
+        // Only validate event name for event entity type
+        if (this.isEventEntity && !this.mandatoryFieldMapping.event_name) {
+            this.showToast('Error', 'Please provide an event name', 'error');
             return false;
         }
 

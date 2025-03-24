@@ -16,9 +16,9 @@ public with sharing class CleverTapDataMapper {
         }
         
         try {
-            // Fetch the sync configuration to get the target entity type (profile or event)
-            String targetEntityType = getTargetEntityType(recordType);
-            if (String.isBlank(targetEntityType)) {
+            // Get sync configuration for this record type
+            CleverTap_Sync_Configuration__c syncConfig = getSyncConfiguration(recordType);
+            if (syncConfig == null) {
                 return null;
             }
             
@@ -37,38 +37,20 @@ public with sharing class CleverTapDataMapper {
                 return null;
             }
             
+            // Get event name mapping (if exists)
+            CleverTap_Mapping__c eventNameMapping = findEventNameMapping(fieldMappings);
+            String eventName = (eventNameMapping != null) ? 
+                String.valueOf(eventNameMapping.Salesforce_Field__c) : null;
+            
+            // Determine if this is an event or profile update based on the sync configuration
+            Boolean isEvent = (syncConfig.CleverTap_Entity__c == 'event');
+            
             Map<String, Object> profileData = createProfileData(record, fieldMappings);
-            return createFinalPayload(identityValue, profileData, targetEntityType, record, recordType);
+            return createFinalPayload(identityValue, profileData, eventName, isEvent);
         } catch (Exception e) {
             //System.debug(LoggingLevel.ERROR, 'Error mapping ' + recordType + ' to CleverTap: ' + e.getMessage());
             return null;
         }
-    }
-    
-    /**
-     * @description Gets the target entity type (profile or event) from the sync configuration
-     * @param recordType The record type
-     * @return The target entity type (profile or event)
-     */
-    private static String getTargetEntityType(String recordType) {
-        // Check CRUD permissions
-        if (!CleverTap_Sync_Configuration__c.SObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).isAccessible()) {
-            return null;
-        }
-        
-        List<CleverTap_Sync_Configuration__c> configs = [
-            SELECT CleverTap_Entity__c 
-            FROM CleverTap_Sync_Configuration__c 
-            WHERE Salesforce_Entity__c = :recordType 
-            AND Status__c = 'Active'
-            LIMIT 1
-        ];
-        
-        if (configs.isEmpty()) {
-            return 'profile'; // Default to profile if no configuration found
-        }
-        
-        return configs[0].CleverTap_Entity__c;
     }
     
     /**
@@ -110,6 +92,20 @@ public with sharing class CleverTapDataMapper {
     }
     
     /**
+     * @description Finds the event name mapping (evtName)
+     * @param fieldMappings The list of field mappings
+     * @return The event name mapping
+     */
+    private static CleverTap_Mapping__c findEventNameMapping(List<CleverTap_Mapping__c> fieldMappings) {
+        for (CleverTap_Mapping__c mapping : fieldMappings) {
+            if (mapping.Is_Mandatory__c && mapping.CleverTap_Field__c == 'evtName') {
+                return mapping;
+            }
+        }
+        return null;
+    }
+    
+    /**
      * @description Gets the identity value from the record
      * @param record The Salesforce record
      * @param identityMapping The identity mapping
@@ -130,6 +126,13 @@ public with sharing class CleverTapDataMapper {
         
         // Process only the explicitly mapped fields
         for (CleverTap_Mapping__c mapping : fieldMappings) {
+            // Skip mandatory fields (handled separately)
+            if (mapping.Is_Mandatory__c || 
+                mapping.CleverTap_Field__c == 'customer_id' || 
+                mapping.CleverTap_Field__c == 'evtName') {
+                continue;
+            }
+            
             // Skip if the field value is null
             Object fieldValue = record.get(mapping.Salesforce_Field__c);
             if (fieldValue == null) {
@@ -150,41 +153,53 @@ public with sharing class CleverTapDataMapper {
     }
     
     /**
-     * @description Creates the final payload based on the target entity type
+     * @description Gets the active sync configuration for a record type
+     * @param recordType The record type
+     * @return The sync configuration
+     */
+    private static CleverTap_Sync_Configuration__c getSyncConfiguration(String recordType) {
+        // Check CRUD permissions
+        if (!CleverTap_Sync_Configuration__c.SObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).isAccessible()) {
+            return null;
+        }
+        
+        List<CleverTap_Sync_Configuration__c> configs = [
+            SELECT Id, CleverTap_Entity__c
+            FROM CleverTap_Sync_Configuration__c
+            WHERE Salesforce_Entity__c = :recordType
+            AND Status__c = 'Active'
+            LIMIT 1
+        ];
+        
+        return configs.isEmpty() ? null : configs[0];
+    }
+
+    /**
+     * @description Creates the final payload
      * @param identityValue The identity value
      * @param profileData The profile data
-     * @param targetEntityType The target entity type (profile or event)
-     * @param record The Salesforce record
-     * @param recordType The record type
+     * @param eventName The event name (if provided)
+     * @param isEvent Whether this should be sent as an event
      * @return The final payload
      */
     private static Map<String, Object> createFinalPayload(String identityValue, Map<String, Object> profileData, 
-                                                         String targetEntityType, SObject record, String recordType) {
+                                                         String eventName, Boolean isEvent) {
         Map<String, Object> payload = new Map<String, Object>();
         payload.put('identity', identityValue);
-        payload.put('$source', 'SFDC');
         
-        if (targetEntityType.toLowerCase() == 'event') {
-            // For event type, we need to structure the payload differently
+        // Only send as event if both conditions are met:
+        // 1. The sync configuration target entity is 'event'
+        // 2. An event name is provided
+        if (isEvent && String.isNotBlank(eventName)) {
             payload.put('type', 'event');
-            
-            // Create an event name based on the record type
-            String eventName = 'sf_' + recordType.toLowerCase();
-            
-            // For opportunities, we can be more specific about the event
-            if (recordType == 'Opportunity') {
-                Opportunity opp = (Opportunity)record;
-                eventName = 'sf_opportunity_' + opp.StageName.toLowerCase().replaceAll(' ', '_');
-            }
-            
             payload.put('evtName', eventName);
             payload.put('evtData', profileData);
         } else {
-            // Default to profile type
             payload.put('type', 'profile');
             payload.put('profileData', profileData);
         }
         
+        payload.put('$source', 'SFDC');
         return payload;
     }
 }
