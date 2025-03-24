@@ -1,6 +1,7 @@
-import { LightningElement, api, track } from 'lwc';
+import { LightningElement, api, track, wire } from 'lwc';
 import { ShowToastEvent } from 'lightning/platformShowToastEvent';
 import createSyncConfiguration from '@salesforce/apex/IntegrationSyncController.createSyncConfiguration';
+import getSyncConfigurations from '@salesforce/apex/IntegrationSyncController.getSyncConfigurations';
 import getSyncConfigurationById from '@salesforce/apex/IntegrationSyncController.getSyncConfigurationById';
 import updateSyncConfiguration from '@salesforce/apex/IntegrationSyncController.updateSyncConfiguration';
 
@@ -26,7 +27,16 @@ export default class IntegrationSyncConfig extends LightningElement {
     @track showBasicConfig = true;
     @track showFieldMapping = false;
     @track syncId;
-    @track savedToDatabase = false;
+    @track existingSyncConfigs = [];
+
+    @wire(getSyncConfigurations, { connectionId: '$connectionId' })
+    wiredSyncConfigs({ error, data }) {
+        if (data) {
+            this.existingSyncConfigs = data;
+        } else if (error) {
+            console.error('Error fetching sync configurations', error);
+        }
+    }
 
     connectedCallback() {
         // Set the connection ID from the API property
@@ -36,7 +46,6 @@ export default class IntegrationSyncConfig extends LightningElement {
         
         if (this.mode === 'edit' && this.recordId) {
             this.syncId = this.recordId;
-            this.savedToDatabase = true;
             this.loadSyncConfiguration();
         }
     }
@@ -129,37 +138,64 @@ export default class IntegrationSyncConfig extends LightningElement {
         this.dispatchEvent(new CustomEvent('cancel'));
     }
 
-    // Modified to not save the configuration yet
+    validateDuplicateSourceEntity() {
+        // Skip validation if we're in edit mode
+        if (this.mode === 'edit') {
+            return true;
+        }
+
+        // Check if the selected source entity already exists for this connection
+        const duplicate = this.existingSyncConfigs.find(config => 
+            config.sourceEntity === this.syncData.sourceEntity &&
+            config.status === 'Active'
+        );
+
+        if (duplicate) {
+            this.showToast(
+                'Error', 
+                `A sync configuration for "${this.syncData.sourceEntity}" already exists. Please edit the existing configuration instead.`, 
+                'error'
+            );
+            return false;
+        }
+
+        return true;
+    }
+
     async handleNext() {
-        if (this.validateForm()) {
+        if (this.validateForm() && this.validateDuplicateSourceEntity()) {
             try {
                 this.isLoading = true;
                 
-                // If we're in edit mode, the record already exists
+                // Ensure status is set for new configurations
+                if (this.mode === 'new') {
+                    this.syncData.status = 'Active';
+                }
+                
                 if (this.mode === 'edit') {
-                    // For edit mode, we can update the configuration now
                     await updateSyncConfiguration({
                         syncId: this.recordId,
                         syncData: JSON.stringify(this.syncData)
                     });
                     this.syncId = this.recordId;
                     this.showToast('Success', 'Sync configuration updated successfully', 'success');
-                    this.savedToDatabase = true;
+                } else {
+                    const result = await createSyncConfiguration({
+                        syncData: JSON.stringify(this.syncData)
+                    });
+                    this.syncId = result;
+                    this.recordId = result;
+                    this.showToast('Success', 'Sync configuration created successfully', 'success');
                 }
                 
-                // Just switch to the field mapping view without creating a new record
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
                 this.showBasicConfig = false;
                 this.showFieldMapping = true;
 
                 const fieldMappingComponent = this.template.querySelector('c-integration-field-mapping');
                 if (fieldMappingComponent) {
-                    // Only provide syncId if it's already saved to the database (edit mode)
-                    if (this.savedToDatabase) {
-                        fieldMappingComponent.syncId = this.syncId;
-                    }
-                    // Pass the entity types for reference
-                    fieldMappingComponent.sourceEntity = this.syncData.sourceEntity;
-                    fieldMappingComponent.targetEntity = this.syncData.targetEntity;
+                    fieldMappingComponent.syncId = this.syncId;
                 }
             } catch (error) {
                 const action = this.mode === 'edit' ? 'update' : 'create';
@@ -192,62 +228,15 @@ export default class IntegrationSyncConfig extends LightningElement {
         return isValid;
     }
     
-    // Modified to save the configuration first, then save field mappings
-    async handleMappingSave() {
-        try {
-            this.isLoading = true;
-            
-            // First, save the basic configuration if it's not yet saved
-            if (!this.savedToDatabase) {
-                // Ensure status is set
-                this.syncData.status = 'Active';
-                
-                // Save the configuration
-                const result = await createSyncConfiguration({
-                    syncData: JSON.stringify(this.syncData)
-                });
-                
-                this.syncId = result;
-                this.recordId = result;
-                this.savedToDatabase = true;
-            }
-            
-            // Get the field mapping component
-            const fieldMappingComponent = this.template.querySelector('c-integration-field-mapping');
-            if (fieldMappingComponent) {
-                // Set the syncId first
-                fieldMappingComponent.syncId = this.syncId;
-                
-                // Then call the explicit save method on the field mapping component
-                await fieldMappingComponent.saveFieldMappings();
-            }
-            
-            this.showToast('Success', 'Sync configuration and field mappings saved successfully', 'success');
-            this.dispatchEvent(new CustomEvent('save'));
-        } catch (error) {
-            const action = this.mode === 'edit' ? 'update' : 'create';
-            this.showToast('Error', `Failed to ${action} configuration: ${error.message || error.body?.message || 'Unknown error'}`, 'error');
-        } finally {
-            this.isLoading = false;
-        }
+    // Modified to dispatch save event instead of navigating
+    handleMappingSave() {
+        this.showToast('Success', 'Field mappings saved successfully', 'success');
+        this.dispatchEvent(new CustomEvent('save'));
     }
 
-    // Modified to handle complete cancellation
     handleMappingCancel() {
-        // If this is a new sync and we haven't saved to the database,
-        // we just return to the basic config screen
-        if (!this.savedToDatabase) {
-            this.showBasicConfig = true;
-            this.showFieldMapping = false;
-        } else if (this.mode === 'new') {
-            // If we've already saved a new config but want to cancel,
-            // we should dispatch the cancel event to leave the component entirely
-            this.dispatchEvent(new CustomEvent('cancel'));
-        } else {
-            // For edit mode, we can just go back to basic config
-            this.showBasicConfig = true;
-            this.showFieldMapping = false;
-        }
+        this.showBasicConfig = true;
+        this.showFieldMapping = false;
     }
 
     showToast(title, message, variant) {
