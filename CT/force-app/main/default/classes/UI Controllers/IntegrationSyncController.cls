@@ -104,4 +104,33 @@ public with sharing class IntegrationSyncController {
     public static SyncConfigurationManager.SyncConfigWrapper updateSyncConfiguration(String syncId, String syncData) {
         return SyncConfigurationManager.updateSyncConfiguration(syncId, syncData);
     }
+
+    /**
+     * @description Runs a historical sync for all records of the source entity
+     * @param syncId The ID of the sync configuration
+     * @return Status of the initiated sync
+     */
+    @AuraEnabled
+    public static String runHistoricalSync(String syncId) {
+        try {
+            // Get the sync configuration
+            SyncConfigurationManager.SyncConfigWrapper config = getSyncConfigurationById(syncId);
+            
+            if (config == null) {
+                throw new AuraHandledException('Sync configuration not found');
+            }
+            
+            if (config.status != 'Active') {
+                throw new AuraHandledException('Sync configuration must be active to run historical sync');
+            }
+            
+            // Start the batch process to sync all records
+            CleverTapHistoricalSyncBatch batchProcess = new CleverTapHistoricalSyncBatch(config.sourceEntity, syncId);
+            Database.executeBatch(batchProcess, 10); // Process 100 records at a time
+            
+            return 'Success';
+        } catch (Exception e) {
+            throw new AuraHandledException('Error running historical sync: ' + e.getMessage());
+        }
+    }
 }

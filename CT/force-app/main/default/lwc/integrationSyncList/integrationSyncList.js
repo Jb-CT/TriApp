@@ -5,6 +5,7 @@ import { refreshApex } from '@salesforce/apex';
 import getSyncConfigurations from '@salesforce/apex/IntegrationSyncController.getSyncConfigurations';
 import deleteSyncConfiguration from '@salesforce/apex/IntegrationSyncController.deleteSyncConfiguration';
 import updateSyncStatus from '@salesforce/apex/IntegrationSyncController.updateSyncStatus';
+import runHistoricalSync from '@salesforce/apex/IntegrationSyncController.runHistoricalSync';
 
 export default class IntegrationSyncList extends NavigationMixin(LightningElement) {
     // Change these to API properties so they can be passed from parent
@@ -108,13 +109,15 @@ export default class IntegrationSyncList extends NavigationMixin(LightningElemen
             { label: 'Edit', name: 'edit' },
             { label: 'Delete', name: 'delete' }
         ];
-
+    
         if (row.status === 'Active') {
             actions.push({ label: 'Deactivate', name: 'deactivate' });
+            // Add Historical Sync action only for active configurations
+            actions.push({ label: 'Historical Sync', name: 'historicalSync' });
         } else {
             actions.push({ label: 'Activate', name: 'activate' });
         }
-
+    
         return actions;
     }
 
@@ -133,7 +136,7 @@ export default class IntegrationSyncList extends NavigationMixin(LightningElemen
     handleRowAction(event) {
         const action = event.detail.action;
         const row = event.detail.row;
-
+    
         switch (action.name) {
             case 'edit':
                 this.navigateToEdit(row);
@@ -146,6 +149,30 @@ export default class IntegrationSyncList extends NavigationMixin(LightningElemen
             case 'deactivate':
                 this.handleStatusChange(row, action.name);
                 break;
+            case 'historicalSync':
+                this.handleHistoricalSync(row);
+                break;
+        }
+    }
+
+    async handleHistoricalSync(row) {
+        try {
+            if (!confirm(`Are you sure you want to run a historical sync for "${row.name}"? This will process all existing records of type: ${row.sourceEntity}.`)) {
+                return;
+            }
+            
+            this.isLoading = true;
+            this.showToast('Info', `Starting historical sync for ${row.sourceEntity} records...`, 'info');
+            
+            // Call Apex method to handle historical sync
+            await runHistoricalSync({ syncId: row.id });
+            
+            this.showToast('Success', `Historical sync initiated for ${row.sourceEntity} records. This may take some time to complete depending on data volume.`, 'success');
+        } catch (error) {
+            this.showToast('Error', `Error starting historical sync: ${error.body?.message || error.message || 'Unknown error'}`, 'error');
+            console.error('Error starting historical sync:', error);
+        } finally {
+            this.isLoading = false;
         }
     }
 
