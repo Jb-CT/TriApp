@@ -16,6 +16,12 @@ public with sharing class CleverTapDataMapper {
         }
         
         try {
+            // Fetch the sync configuration to get the target entity type (profile or event)
+            String targetEntityType = getTargetEntityType(recordType);
+            if (String.isBlank(targetEntityType)) {
+                return null;
+            }
+            
             List<CleverTap_Mapping__c> fieldMappings = getFieldMappings(recordType);
             if (fieldMappings.isEmpty()) {
                 return null;
@@ -32,11 +38,37 @@ public with sharing class CleverTapDataMapper {
             }
             
             Map<String, Object> profileData = createProfileData(record, fieldMappings);
-            return createFinalPayload(identityValue, profileData);
+            return createFinalPayload(identityValue, profileData, targetEntityType, record, recordType);
         } catch (Exception e) {
             //System.debug(LoggingLevel.ERROR, 'Error mapping ' + recordType + ' to CleverTap: ' + e.getMessage());
             return null;
         }
+    }
+    
+    /**
+     * @description Gets the target entity type (profile or event) from the sync configuration
+     * @param recordType The record type
+     * @return The target entity type (profile or event)
+     */
+    private static String getTargetEntityType(String recordType) {
+        // Check CRUD permissions
+        if (!CleverTap_Sync_Configuration__c.SObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).isAccessible()) {
+            return null;
+        }
+        
+        List<CleverTap_Sync_Configuration__c> configs = [
+            SELECT CleverTap_Entity__c 
+            FROM CleverTap_Sync_Configuration__c 
+            WHERE Salesforce_Entity__c = :recordType 
+            AND Status__c = 'Active'
+            LIMIT 1
+        ];
+        
+        if (configs.isEmpty()) {
+            return 'profile'; // Default to profile if no configuration found
+        }
+        
+        return configs[0].CleverTap_Entity__c;
     }
     
     /**
@@ -118,17 +150,41 @@ public with sharing class CleverTapDataMapper {
     }
     
     /**
-     * @description Creates the final payload
+     * @description Creates the final payload based on the target entity type
      * @param identityValue The identity value
      * @param profileData The profile data
+     * @param targetEntityType The target entity type (profile or event)
+     * @param record The Salesforce record
+     * @param recordType The record type
      * @return The final payload
      */
-    private static Map<String, Object> createFinalPayload(String identityValue, Map<String, Object> profileData) {
+    private static Map<String, Object> createFinalPayload(String identityValue, Map<String, Object> profileData, 
+                                                         String targetEntityType, SObject record, String recordType) {
         Map<String, Object> payload = new Map<String, Object>();
         payload.put('identity', identityValue);
-        payload.put('type', 'profile');
         payload.put('$source', 'SFDC');
-        payload.put('profileData', profileData);
+        
+        if (targetEntityType.toLowerCase() == 'event') {
+            // For event type, we need to structure the payload differently
+            payload.put('type', 'event');
+            
+            // Create an event name based on the record type
+            String eventName = 'sf_' + recordType.toLowerCase();
+            
+            // For opportunities, we can be more specific about the event
+            if (recordType == 'Opportunity') {
+                Opportunity opp = (Opportunity)record;
+                eventName = 'sf_opportunity_' + opp.StageName.toLowerCase().replaceAll(' ', '_');
+            }
+            
+            payload.put('evtName', eventName);
+            payload.put('evtData', profileData);
+        } else {
+            // Default to profile type
+            payload.put('type', 'profile');
+            payload.put('profileData', profileData);
+        }
+        
         return payload;
     }
 }

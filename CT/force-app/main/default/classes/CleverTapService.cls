@@ -5,6 +5,10 @@
  */
 public with sharing class CleverTapService {
     
+    // API endpoints
+    private static final String PROFILE_API_PATH = '/1/upload';
+    private static final String EVENT_API_PATH = '/1/upload';
+    
     /**
      * @description Sends a Salesforce record to CleverTap.
      * @param record The Salesforce record to be sent.
@@ -27,11 +31,17 @@ public with sharing class CleverTapService {
                 return;
             }
             
+            // Get target entity type from configuration
+            String targetEntityType = getTargetEntityType(recordType);
+            
             // Map the record 
             Map<String, Object> mappedRecord = CleverTapDataMapper.mapToCleverTap(record, recordType);
             if (mappedRecord == null) {
                 return;
             }
+            
+            // Set the correct API endpoint based on target entity type
+            credentials = adjustApiEndpoint(credentials, targetEntityType);
             
             // Send to CleverTap
             HttpResponse response = sendRequest(credentials, mappedRecord);
@@ -47,6 +57,61 @@ public with sharing class CleverTapService {
             // Log error event
             logErrorEvent(record.Id, recordType, e);
         }
+    }
+    
+    /**
+     * @description Gets the target entity type from the sync configuration
+     * @param recordType The record type
+     * @return The target entity type (profile or event)
+     */
+    private static String getTargetEntityType(String recordType) {
+        if (!CleverTap_Sync_Configuration__c.SObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).isAccessible()) {
+            return 'profile'; // Default to profile if no access
+        }
+        
+        List<CleverTap_Sync_Configuration__c> configs = [
+            SELECT CleverTap_Entity__c 
+            FROM CleverTap_Sync_Configuration__c 
+            WHERE Salesforce_Entity__c = :recordType 
+            AND Status__c = 'Active'
+            LIMIT 1
+        ];
+        
+        if (configs.isEmpty()) {
+            return 'profile'; // Default to profile if no configuration found
+        }
+        
+        return configs[0].CleverTap_Entity__c;
+    }
+    
+    /**
+     * @description Adjusts the API endpoint in credentials based on target entity type
+     * @param credentials The original credentials
+     * @param targetEntityType The target entity type
+     * @return Updated credentials with correct API endpoint
+     */
+    private static Map<String, String> adjustApiEndpoint(Map<String, String> credentials, String targetEntityType) {
+        Map<String, String> adjustedCredentials = new Map<String, String>(credentials);
+        
+        // Base URL without path
+        String baseUrl = credentials.get('API_URL');
+        if (String.isBlank(baseUrl)) {
+            return adjustedCredentials;
+        }
+        
+        // Remove existing path if any
+        Integer pathStart = baseUrl.indexOf('/1/');
+        if (pathStart > 0) {
+            baseUrl = baseUrl.substring(0, pathStart);
+        }
+        
+        // Add appropriate path based on entity type
+        String apiPath = (targetEntityType.toLowerCase() == 'event') ? EVENT_API_PATH : PROFILE_API_PATH;
+        
+        // Update the API URL
+        adjustedCredentials.put('API_URL', baseUrl + apiPath);
+        
+        return adjustedCredentials;
     }
     
     /**
@@ -186,5 +251,4 @@ public with sharing class CleverTapService {
         );
         CleverTapEventLogger.logEvent(eventData);
     }
-
 }
