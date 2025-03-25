@@ -147,7 +147,7 @@ public with sharing class CleverTapDataMapper {
         }
         
         // Add timestamp - we'll keep this as it's essential for CleverTap
-        profileData.put('Timestamp', DateTime.now().format());
+        //profileData.put('Timestamp', DateTime.now().format());
         
         return profileData;
     }

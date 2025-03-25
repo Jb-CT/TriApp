@@ -19,7 +19,7 @@ public with sharing class EventLogController {
         }
         
         // Start building the query
-        String query = 'SELECT Id, Name, Status__c, Response__c, CreatedDate, Lead__c, Lead__r.Name, Contact__c, Contact__r.Name';
+        String query = 'SELECT Id, Name, Status__c, Response__c, CreatedDate';
         query += ' FROM CleverTap_Event__c';
         
         // Add WHERE clauses
@@ -63,8 +63,7 @@ public with sharing class EventLogController {
         
         // Query the record
         List<CleverTap_Event__c> events = [
-            SELECT Id, Name, Status__c, Response__c, CreatedDate, 
-                   Lead__c, Lead__r.Name, Contact__c, Contact__r.Name
+            SELECT Id, Name, Status__c, Response__c, CreatedDate
             FROM CleverTap_Event__c
             WHERE Id = :recordId
             LIMIT 1

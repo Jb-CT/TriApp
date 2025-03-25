@@ -29,18 +29,6 @@ export default class EventLogViewer extends NavigationMixin(LightningElement) {
             }
         },
         {
-            label: 'Record Type',
-            fieldName: 'recordType',
-            type: 'text',
-            sortable: true
-        },
-        {
-            label: 'Record Name',
-            fieldName: 'recordName',
-            type: 'text',
-            sortable: true
-        },
-        {
             label: 'Date',
             fieldName: 'CreatedDate',
             type: 'date',
@@ -86,20 +74,6 @@ export default class EventLogViewer extends NavigationMixin(LightningElement) {
     get selectedEventStatusClass() {
         if (this.selectedEvent && this.selectedEvent.Status__c) {
             return this.selectedEvent.Status__c === 'Success' ? 'slds-theme_success' : 'slds-theme_error';
-        }
-        return '';
-    }
-    
-    get leadRecordUrl() {
-        if (this.selectedEvent && this.selectedEvent.Lead__c) {
-            return `/lightning/r/Lead/${this.selectedEvent.Lead__c}/view`;
-        }
-        return '';
-    }
-    
-    get contactRecordUrl() {
-        if (this.selectedEvent && this.selectedEvent.Contact__c) {
-            return `/lightning/r/Contact/${this.selectedEvent.Contact__c}/view`;
         }
         return '';
     }
@@ -157,25 +131,11 @@ export default class EventLogViewer extends NavigationMixin(LightningElement) {
     // Process the log data
     processLogData(data) {
         this.eventLogs = data.map(log => {
-            // Determine record type and name
-            let recordType = '';
-            let recordName = '';
-            
-            if (log.Lead__c) {
-                recordType = 'Lead';
-                recordName = log.Lead__r.Name;
-            } else if (log.Contact__c) {
-                recordType = 'Contact';
-                recordName = log.Contact__r.Name;
-            }
-            
             // Determine status class
             const statusClass = log.Status__c === 'Success' ? 'slds-text-color_success' : 'slds-text-color_error';
             
             return {
                 ...log,
-                recordType,
-                recordName,
                 statusClass
             };
         });

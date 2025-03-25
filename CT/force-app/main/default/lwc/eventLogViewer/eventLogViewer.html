@@ -109,21 +109,6 @@
                                 </lightning-badge>
                             </div>
                         </div>
-                        <div class="slds-col slds-size_1-of-2 slds-var-p-around_small">
-                            <template if:true={selectedEvent.Lead__c}>
-                                <div class="slds-text-title slds-var-m-bottom_xx-small">Lead</div>
-                                <div class="slds-text-body_regular slds-var-m-bottom_small">
-                                    <a href={leadRecordUrl} target="_blank">{selectedEvent.Lead__r.Name}</a>
-                                </div>
-                            </template>
-                            
-                            <template if:true={selectedEvent.Contact__c}>
-                                <div class="slds-text-title slds-var-m-bottom_xx-small">Contact</div>
-                                <div class="slds-text-body_regular slds-var-m-bottom_small">
-                                    <a href={contactRecordUrl} target="_blank">{selectedEvent.Contact__r.Name}</a>
-                                </div>
-                            </template>
-                        </div>
                     </div>
                     
                     <!-- Response Details -->
