@@ -65,6 +65,8 @@ export default class IntegrationFieldMapping extends LightningElement {
         if (!this.syncId) return;
 
         try {
+            // Add status field for event entity if not already present
+            this.addPredefinedFieldsIfNeeded();
             const existingMappings = await getExistingMappings({ syncId: this.syncId });
             if (existingMappings) {
                 // Process customer_id mapping
@@ -89,8 +91,31 @@ export default class IntegrationFieldMapping extends LightningElement {
                         dataType: m.Data_Type__c || 'Text'
                     }));
             }
+            
+            // Add status field for event entity if not already present
+            this.addPredefinedFieldsIfNeeded();
         } catch (error) {
             this.showToast('Error', 'Failed to load existing mappings: ' + (error.body?.message || error.message || 'Unknown error'), 'error');
+        }
+    }
+    
+    // New method to add predefined fields based on target entity
+    addPredefinedFieldsIfNeeded() {
+        if (this.isEventEntity) {
+            // Check if status field already exists
+            const hasStatusField = this.additionalMappings.some(
+                mapping => mapping.targetField === 'status'
+            );
+            
+            // If status field doesn't exist, add it
+            if (!hasStatusField) {
+                this.additionalMappings.push({
+                    id: Date.now() + Math.random(),
+                    targetField: 'status',
+                    sourceField: '',  // Default empty, user needs to select
+                    dataType: 'Text'
+                });
+            }
         }
     }
 
