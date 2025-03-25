@@ -4,6 +4,7 @@ import createSyncConfiguration from '@salesforce/apex/IntegrationSyncController.
 import getSyncConfigurations from '@salesforce/apex/IntegrationSyncController.getSyncConfigurations';
 import getSyncConfigurationById from '@salesforce/apex/IntegrationSyncController.getSyncConfigurationById';
 import updateSyncConfiguration from '@salesforce/apex/IntegrationSyncController.updateSyncConfiguration';
+import deleteSyncConfiguration from '@salesforce/apex/IntegrationSyncController.deleteSyncConfiguration';
 
 export default class IntegrationSyncConfig extends LightningElement {
     @api recordId;
@@ -133,8 +134,28 @@ export default class IntegrationSyncConfig extends LightningElement {
         this.dispatchEvent(new CustomEvent('cancel'));
     }
 
-    // Modified to dispatch cancel event instead of navigating
-    handleBack() {
+    async handleBack() {
+        // If this is a new configuration (not edit mode), delete it when going back
+        if (this.mode === 'new' && this.syncId) {
+            try {
+                this.isLoading = true;
+                
+                // Delete the configuration
+                await deleteSyncConfiguration({ syncId: this.syncId });
+                
+                // Clear the ID since it's deleted
+                this.syncId = null;
+                this.recordId = null;
+                
+            } catch (error) {
+                console.error('Error deleting sync configuration:', error);
+                // Continue even if delete fails - user is trying to go back anyway
+            } finally {
+                this.isLoading = false;
+            }
+        }
+        
+        // Dispatch cancel event to return to parent view
         this.dispatchEvent(new CustomEvent('cancel'));
     }
 
@@ -234,7 +255,28 @@ export default class IntegrationSyncConfig extends LightningElement {
         this.dispatchEvent(new CustomEvent('save'));
     }
 
-    handleMappingCancel() {
+    async handleMappingCancel() {
+        // If this is a new configuration (not edit mode), delete it when canceling
+        if (this.mode === 'new' && this.syncId) {
+            try {
+                this.isLoading = true;
+                
+                // Delete the configuration
+                await deleteSyncConfiguration({ syncId: this.syncId });
+                
+                // Clear the ID since it's deleted
+                this.syncId = null;
+                this.recordId = null;
+                
+            } catch (error) {
+                console.error('Error deleting sync configuration:', error);
+                // Continue even if delete fails - user is trying to cancel anyway
+            } finally {
+                this.isLoading = false;
+            }
+        }
+        
+        // Return to basic config screen
         this.showBasicConfig = true;
         this.showFieldMapping = false;
     }
