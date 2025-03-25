@@ -68,7 +68,7 @@ export default class IntegrationFieldMapping extends LightningElement {
             const existingMappings = await getExistingMappings({ syncId: this.syncId });
             if (existingMappings) {
                 // Process customer_id mapping
-                const customerIdMapping = existingMappings.find(m => m.CleverTap_Field__c === 'sfmc_customer_id' && m.Is_Mandatory__c);
+                const customerIdMapping = existingMappings.find(m => m.CleverTap_Field__c === 'customer_id' && m.Is_Mandatory__c);
                 if (customerIdMapping) {
                     this.mandatoryFieldMapping.customer_id = customerIdMapping.Salesforce_Field__c;
                 }
@@ -158,7 +158,7 @@ export default class IntegrationFieldMapping extends LightningElement {
             const mappings = [
                 // Customer ID mapping
                 {
-                    CleverTap_Field__c: 'sfmc_customer_id',
+                    CleverTap_Field__c: 'customer_id',
                     Salesforce_Field__c: this.mandatoryFieldMapping.customer_id,
                     Data_Type__c: 'Text',
                     Is_Mandatory__c: true
