@@ -20,38 +20,45 @@ public with sharing class CleverTapService {
         }
         
         try {
-            // Check access and configuration
-            if (!isConfigurationAccessible() || !hasSyncConfiguration(recordType)) {
+            // Check access and configurations
+            if (!isConfigurationAccessible()) {
                 return;
             }
             
-            // Get credentials and check
-            Map<String, String> credentials = CleverTapConfig.getCredentials();
-            if (!areCredentialsValid(credentials)) {
+            // Get all connection mappings for this record
+            List<CleverTapDataMapper.ConnectionMapping> connectionMappings = 
+                CleverTapDataMapper.mapToMultipleConnections(record, recordType);
+            
+            if (connectionMappings.isEmpty()) {
                 return;
             }
             
-            // Get target entity type from configuration
-            String targetEntityType = getTargetEntityType(recordType);
-            
-            // Map the record 
-            Map<String, Object> mappedRecord = CleverTapDataMapper.mapToCleverTap(record, recordType);
-            if (mappedRecord == null) {
-                return;
+            // Process each connection mapping
+            for (CleverTapDataMapper.ConnectionMapping mapping : connectionMappings) {
+                // Get credentials for this connection
+                Map<String, String> credentials = getCredentialsForConnection(mapping.connectionId);
+                if (!areCredentialsValid(credentials)) {
+                    continue;
+                }
+                
+                // Get the target entity type (profile or event)
+                Boolean isEvent = (mapping.payload.get('type') == 'event');
+                
+                // Set the correct API endpoint
+                credentials = adjustApiEndpoint(credentials, isEvent ? 'event' : 'profile');
+                
+                // Send to CleverTap
+                HttpResponse response = sendRequest(credentials, mapping.payload);
+                
+                
+                // Log the event
+                String requestBody = getRequestBody(mapping.payload);
+                CleverTapEventLogger.EventData eventData = new CleverTapEventLogger.EventData(
+                    record.Id, recordType, response, requestBody
+                );
+                CleverTapEventLogger.logEvent(eventData);
+                
             }
-            
-            // Set the correct API endpoint based on target entity type
-            credentials = adjustApiEndpoint(credentials, targetEntityType);
-            
-            // Send to CleverTap
-            HttpResponse response = sendRequest(credentials, mappedRecord);
-            
-            // Log the event
-            String requestBody = getRequestBody(mappedRecord);
-            CleverTapEventLogger.EventData eventData = new CleverTapEventLogger.EventData(
-                record.Id, recordType, response, requestBody
-            );
-            CleverTapEventLogger.logEvent(eventData);
             
         } catch (Exception e) {
             // Log error event
@@ -250,5 +257,49 @@ public with sharing class CleverTapService {
             recordId, recordType, null, 'Error: ' + e.getMessage()
         );
         CleverTapEventLogger.logEvent(eventData);
+    }
+
+    /**
+     * @description Gets credentials for a specific connection
+     * @param connectionId The connection ID
+     * @return The API credentials
+     */
+    private static Map<String, String> getCredentialsForConnection(String connectionId) {
+        // Query the specific connection by ID or developer name
+        if (String.isBlank(connectionId)) {
+            return CleverTapConfig.getCredentials(); // Fallback to default method
+        }
+        
+        // Check CRUD permissions
+        if (!CleverTap_Config__c.SObjectType.getDescribe(SObjectDescribeOptions.DEFERRED).isAccessible()) {
+            return null;
+        }
+        
+        // Query the connection by ID
+        List<CleverTap_Config__c> configs = [
+            SELECT Name, CleverTap_API_URL__c, CleverTap_Account_ID__c, 
+                CleverTap_Passcode__c, Region__c
+            FROM CleverTap_Config__c
+            WHERE Id = :connectionId OR Name = :connectionId
+            LIMIT 1
+        ];
+        
+        if (configs.isEmpty()) {
+            return null;
+        }
+        
+        CleverTap_Config__c config = configs[0];
+        
+        // Build credentials map
+        Map<String, String> credentials = new Map<String, String>{
+            'NAME' => config.Name,
+            'DEV_NAME' => config.Name,
+            'API_URL' => config.CleverTap_API_URL__c,
+            'ACCOUNT_ID' => config.CleverTap_Account_ID__c,
+            'PASSCODE' => config.CleverTap_Passcode__c,
+            'REGION' => config.Region__c
+        };
+        
+        return credentials;
     }
 }
