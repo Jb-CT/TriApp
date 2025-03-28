@@ -33,6 +33,9 @@ public with sharing class CleverTapService {
                 return;
             }
             
+            // Collect log data for batch logging
+            List<CleverTapEventLogger.EventData> eventDataList = new List<CleverTapEventLogger.EventData>();
+            
             // Process each connection mapping
             for (CleverTapDataMapper.ConnectionMapping mapping : connectionMappings) {
                 // Get credentials for this connection
@@ -41,28 +44,31 @@ public with sharing class CleverTapService {
                     continue;
                 }
                 
-                // Get the target entity type (profile or event)
+                // Get the target entity type and set API endpoint
                 Boolean isEvent = (mapping.payload.get('type') == 'event');
-                
-                // Set the correct API endpoint
                 credentials = adjustApiEndpoint(credentials, isEvent ? 'event' : 'profile');
                 
                 // Send to CleverTap
                 HttpResponse response = sendRequest(credentials, mapping.payload);
                 
-                
-                // Log the event
+                // Collect event data for later logging
                 String requestBody = getRequestBody(mapping.payload);
-                CleverTapEventLogger.EventData eventData = new CleverTapEventLogger.EventData(
+                eventDataList.add(new CleverTapEventLogger.EventData(
                     record.Id, recordType, response, requestBody
-                );
-                CleverTapEventLogger.logEvent(eventData);
-                
+                ));
+            }
+            
+            // Enqueue logging as separate job
+            if (!eventDataList.isEmpty()) {
+                System.enqueueJob(new CleverTapEventLoggerQueueable(eventDataList));
             }
             
         } catch (Exception e) {
-            // Log error event
-            logErrorEvent(record.Id, recordType, e);
+            // Log error in separate job
+            List<CleverTapEventLogger.EventData> errorData = new List<CleverTapEventLogger.EventData>{
+                new CleverTapEventLogger.EventData(record.Id, recordType, null, 'Error: ' + e.getMessage())
+            };
+            System.enqueueJob(new CleverTapEventLoggerQueueable(errorData));
         }
     }
     

@@ -34,38 +34,35 @@ public class CleverTapSyncQueueable implements Queueable, Database.AllowsCallout
      * @description Executes the job to send each record to CleverTap.
      * @param context The Queueable context.
      */
-    public void execute(QueueableContext context) {
-        
-        // For test coverage
-        // if(Test.isRunningTest()) {
-        //     CleverTapIntegrationHandlerTest.TestQueueableMonitor.wasQueueableExecuted = true;
-        // }
-
-        if (records.isEmpty()) {
-            return;
+public void execute(QueueableContext context) {
+    if (records.isEmpty()) {
+        return;
+    }
+    
+    // Process one record at a time to avoid mixing callouts and DML
+    SObject record = records[0];
+    List<SObject> remainingRecords = new List<SObject>(records);
+    remainingRecords.remove(0);
+    
+    // Process the first record based on its type
+    switch on objectType {
+        when 'Lead' {
+            CleverTapService.sendLeadToCleverTap((Lead)record);
         }
-        
-        switch on objectType {
-            when 'Lead' {
-                for (SObject record : records) {
-                    CleverTapService.sendLeadToCleverTap((Lead)record);
-                }
-            }
-            when 'Contact' {
-                for (SObject record : records) {
-                    CleverTapService.sendContactToCleverTap((Contact)record);
-                }
-            }
-            when 'Account' {
-                for (SObject record : records) {
-                    CleverTapService.sendAccountToCleverTap((Account)record);
-                }
-            }
-            when 'Opportunity' {
-                for (SObject record : records) {
-                    CleverTapService.sendOpportunityToCleverTap((Opportunity)record);
-                }
-            }
+        when 'Contact' {
+            CleverTapService.sendContactToCleverTap((Contact)record);
+        }
+        when 'Account' {
+            CleverTapService.sendAccountToCleverTap((Account)record);
+        }
+        when 'Opportunity' {
+            CleverTapService.sendOpportunityToCleverTap((Opportunity)record);
         }
     }
+    
+    // Enqueue the next batch if there are more records
+    if (!remainingRecords.isEmpty()) {
+        System.enqueueJob(new CleverTapSyncQueueable(remainingRecords));
+    }
+}
 }
