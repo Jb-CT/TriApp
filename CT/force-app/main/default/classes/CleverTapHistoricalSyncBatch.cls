@@ -48,20 +48,60 @@ public class CleverTapHistoricalSyncBatch implements Database.Batchable<SObject>
         try {
             // Query for field mappings for this sync configuration
             List<CleverTap_Mapping__c> mappings = [
-                SELECT Salesforce_Field__c 
+                SELECT Salesforce_Field__c, CleverTap_Field__c, Is_Mandatory__c 
                 FROM CleverTap_Mapping__c 
                 WHERE Sync_Configuration__c = :syncConfigId
             ];
             
-            // Add each mapped field to our set
+            // Add each mapped field to our set, excluding special fields
             for (CleverTap_Mapping__c mapping : mappings) {
-                fields.add(mapping.Salesforce_Field__c);
+                // Skip event name mapping - this isn't a field to query
+                if (mapping.CleverTap_Field__c == 'evtName') {
+                    continue;
+                }
+                
+                // Skip if field is empty
+                if (String.isBlank(mapping.Salesforce_Field__c)) {
+                    continue;
+                }
+                
+                // Check if this looks like a Salesforce field
+                // This helps prevent including values that aren't actually fields
+                if (mapping.Salesforce_Field__c.contains('__c') || 
+                    mapping.Salesforce_Field__c.contains('.') ||
+                    isStandardField(mapping.Salesforce_Field__c, objectName)) {
+                    fields.add(mapping.Salesforce_Field__c);
+                }
             }
         } catch (Exception e) {
             System.debug(LoggingLevel.ERROR, 'Error fetching field mappings: ' + e.getMessage());
         }
         
         return fields;
+    }
+
+    /**
+     * @description Checks if a field is a known standard field for an object type
+     * @param fieldName The field name to check
+     * @param objectType The Salesforce object type
+     * @return Boolean True if it's a standard field
+     */
+    private Boolean isStandardField(String fieldName, String objectType) {
+        // Common standard fields for most objects
+        Set<String> commonFields = new Set<String>{'Id', 'Name', 'CreatedDate', 'LastModifiedDate', 'OwnerId'};
+        if (commonFields.contains(fieldName)) {
+            return true;
+        }
+        
+        // Object-specific standard fields
+        Map<String, Set<String>> objectFields = new Map<String, Set<String>>{
+            'Lead' => new Set<String>{'Email', 'FirstName', 'LastName', 'Company', 'Status', 'Phone'},
+            'Contact' => new Set<String>{'Email', 'FirstName', 'LastName', 'AccountId', 'Phone'},
+            'Account' => new Set<String>{'Industry', 'Type', 'BillingCity', 'Phone'},
+            'Opportunity' => new Set<String>{'Amount', 'CloseDate', 'StageName', 'AccountId'}
+        };
+        
+        return objectFields.containsKey(objectType) && objectFields.get(objectType).contains(fieldName);
     }
     
     /**
@@ -179,7 +219,7 @@ public class CleverTapHistoricalSyncBatch implements Database.Batchable<SObject>
             // Get field mappings
             List<CleverTap_Mapping__c> fieldMappings = [
                 SELECT Id, CleverTap_Field__c, Salesforce_Field__c, 
-                       Data_Type__c, Is_Mandatory__c
+                    Data_Type__c, Is_Mandatory__c
                 FROM CleverTap_Mapping__c
                 WHERE Sync_Configuration__c = :syncConfig.Id
             ];
@@ -188,22 +228,29 @@ public class CleverTapHistoricalSyncBatch implements Database.Batchable<SObject>
                 return null;
             }
             
-            // Find identity mapping
+            // Find identity mapping (customer_id)
             CleverTap_Mapping__c identityMapping = null;
+            
+            // Find event name mapping if this is an event
+            CleverTap_Mapping__c eventNameMapping = null;
+            
             for (CleverTap_Mapping__c mapping : fieldMappings) {
                 if (mapping.Is_Mandatory__c && mapping.CleverTap_Field__c == 'customer_id') {
                     identityMapping = mapping;
-                    break;
+                } else if (mapping.CleverTap_Field__c == 'evtName') {
+                    eventNameMapping = mapping;
                 }
             }
             
             if (identityMapping == null) {
+                System.debug('No customer_id mapping found');
                 return null;
             }
             
             // Get identity value
             Object idValue = record.get(identityMapping.Salesforce_Field__c);
             if (idValue == null) {
+                System.debug('Identity value is null for record: ' + record.Id);
                 return null;
             }
             
@@ -212,13 +259,26 @@ public class CleverTapHistoricalSyncBatch implements Database.Batchable<SObject>
             // Create profile data
             Map<String, Object> profileData = new Map<String, Object>();
             for (CleverTap_Mapping__c mapping : fieldMappings) {
-                if (mapping.Is_Mandatory__c || mapping.CleverTap_Field__c == 'customer_id') {
+                // Skip customer_id and evtName mappings for profile data
+                if (mapping.Is_Mandatory__c || 
+                    mapping.CleverTap_Field__c == 'customer_id' ||
+                    mapping.CleverTap_Field__c == 'evtName') {
+                    continue;
+                }
+                
+                // Only include if the mapping references an actual field
+                if (String.isBlank(mapping.Salesforce_Field__c) || 
+                    !record.getPopulatedFieldsAsMap().containsKey(mapping.Salesforce_Field__c)) {
                     continue;
                 }
                 
                 Object fieldValue = record.get(mapping.Salesforce_Field__c);
                 if (fieldValue != null) {
-                    profileData.put(mapping.CleverTap_Field__c, fieldValue);
+                    // Convert the value if needed
+                    Object convertedValue = CleverTapDataConverter.convertFieldValue(
+                        fieldValue, mapping.Data_Type__c
+                    );
+                    profileData.put(mapping.CleverTap_Field__c, convertedValue);
                 }
             }
             
@@ -229,7 +289,17 @@ public class CleverTapHistoricalSyncBatch implements Database.Batchable<SObject>
             Boolean isEvent = (syncConfig.CleverTap_Entity__c == 'event');
             if (isEvent) {
                 payload.put('type', 'event');
-                payload.put('evtName', 'sf_' + objectName.toLowerCase());
+                
+                // If we have an event name mapping with a value, use it
+                // Otherwise use a default value
+                String eventName;
+                if (eventNameMapping != null && String.isNotBlank(eventNameMapping.Salesforce_Field__c)) {
+                    eventName = eventNameMapping.Salesforce_Field__c;
+                } else {
+                    eventName = 'sf_' + objectName.toLowerCase();
+                }
+                
+                payload.put('evtName', eventName);
                 payload.put('evtData', profileData);
             } else {
                 payload.put('type', 'profile');
