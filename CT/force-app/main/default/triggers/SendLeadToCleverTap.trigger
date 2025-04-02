@@ -1,4 +1,9 @@
 trigger SendLeadToCleverTap on Lead (after insert, after update) {
+    // Skip processing in test context if bypass flag is set
+    if (Test.isRunningTest() && CleverTapTestUtils.bypassTriggers) {
+        return;
+    }
+    
     // Skip processing in specific contexts that might be causing the duplication
     if (System.isBatch() || System.isFuture() || System.isQueueable()) {
         return;
