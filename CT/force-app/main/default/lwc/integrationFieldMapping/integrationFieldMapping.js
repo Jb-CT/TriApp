@@ -101,7 +101,7 @@ export default class IntegrationFieldMapping extends LightningElement {
     
     // New method to add predefined fields based on target entity
     addPredefinedFieldsIfNeeded() {
-        if (this.isEventEntity) {
+        if (this.isEventEntity && this.sourceEntity == 'Lead') {
             // Check if status field already exists
             const hasStatusField = this.additionalMappings.some(
                 mapping => mapping.targetField === 'status'
