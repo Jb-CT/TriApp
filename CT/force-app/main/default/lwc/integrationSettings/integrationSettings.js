@@ -5,6 +5,7 @@ import { refreshApex } from '@salesforce/apex';
 import getConfigurations from '@salesforce/apex/IntegrationConfigController.getConfigurations';
 import saveConfiguration from '@salesforce/apex/IntegrationConfigController.saveConfiguration';
 import deleteConfiguration from '@salesforce/apex/IntegrationConfigController.deleteConfiguration';
+import validateCredentials from '@salesforce/apex/IntegrationConfigController.validateCredentials';
 
 export default class IntegrationSettings extends NavigationMixin(LightningElement) {
     @track connection = {
@@ -19,11 +20,12 @@ export default class IntegrationSettings extends NavigationMixin(LightningElemen
     @track isLoading = false;
     wiredConfigResult;
     
-    // Add these new track properties
+    // Add these properties
     @track showSettingsView = true;
     @track showSyncListView = false;
     @track selectedConnectionId;
     @track selectedConnectionName;
+    @track isValidating = false;
     
     regionOptions = [
         { label: 'Europe (Default)', value: 'EU' },
@@ -61,6 +63,9 @@ export default class IntegrationSettings extends NavigationMixin(LightningElemen
 
     get modalTitle() {
         return this.isEditing ? 'Edit Connection' : 'New Connection';
+    }
+    get noConnections() {
+        return !this.connections || this.connections.length === 0;
     }
 
     handleAddNewConnection() {
@@ -150,29 +155,66 @@ export default class IntegrationSettings extends NavigationMixin(LightningElemen
         }
     }
 
-    async handleSave() {
-        if (this.validateForm()) {
-            try {
-                this.isLoading = true;
-                const result = await saveConfiguration({ config: this.connection });
-                
-                if (result === 'Success') {
-                    this.showNewConnectionModal = false;
-                    this.showToast('Success', 'Configuration saved successfully', 'success');
-                    
-                    // Add a delay before refreshing to allow metadata deployment to complete
-                    this.showToast('Info', 'Waiting for changes to process...', 'info');
-                    await this.refreshAfterDelay(10000);
-                    this.showToast('Success', 'Configuration refresh completed', 'success');
-                } else {
-                    this.showToast('Error', 'Failed to save configuration', 'error');
-                }
-            } catch (error) {
-                console.error('Error saving configuration:', error);
-                this.showToast('Error', error.body?.message || 'Failed to save configuration', 'error');
-            } finally {
-                this.isLoading = false;
+    async validateConnectionCredentials() {
+        if (!this.validateFormBasics()) {
+            return false;
+        }
+        
+        try {
+            this.isValidating = true;
+            this.showToast('Info', 'Validating credentials with CleverTap...', 'info');
+            
+            const result = await validateCredentials({
+                region: this.connection.region,
+                accountId: this.connection.accountId,
+                passcode: this.connection.passcode
+            });
+            
+            if (result && result.isValid) {
+                this.showToast('Success', 'Credentials validated successfully', 'success');
+                return true;
+            } else {
+                const errorMsg = result ? result.message : 'Validation failed';
+                this.showToast('Error', errorMsg, 'error');
+                return false;
             }
+        } catch (error) {
+            console.error('Error validating credentials:', error);
+            this.showToast('Error', error.body?.message || 'Failed to validate credentials', 'error');
+            return false;
+        } finally {
+            this.isValidating = false;
+        }
+    }
+
+    async handleSave() {
+        // First validate the credentials
+        const isValid = await this.validateConnectionCredentials();
+        
+        if (!isValid) {
+            return; // Stop if validation fails
+        }
+        
+        try {
+            this.isLoading = true;
+            const result = await saveConfiguration({ config: this.connection });
+            
+            if (result === 'Success') {
+                this.showNewConnectionModal = false;
+                this.showToast('Success', 'Configuration saved successfully', 'success');
+                
+                // Add a delay before refreshing to allow metadata deployment to complete
+                this.showToast('Info', 'Waiting for changes to process...', 'info');
+                await this.refreshAfterDelay(10000);
+                this.showToast('Success', 'Configuration refresh completed', 'success');
+            } else {
+                this.showToast('Error', 'Failed to save configuration', 'error');
+            }
+        } catch (error) {
+            console.error('Error saving configuration:', error);
+            this.showToast('Error', error.body?.message || 'Failed to save configuration', 'error');
+        } finally {
+            this.isLoading = false;
         }
     }
 
@@ -187,7 +229,7 @@ export default class IntegrationSettings extends NavigationMixin(LightningElemen
         await refreshApex(this.wiredConfigResult);
     }
 
-    validateForm() {
+    validateFormBasics() {
         const allValid = [...this.template.querySelectorAll('lightning-input, lightning-combobox')]
             .reduce((validSoFar, inputField) => {
                 inputField.reportValidity();

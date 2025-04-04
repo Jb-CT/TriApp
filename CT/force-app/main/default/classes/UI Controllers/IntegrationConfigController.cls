@@ -3,7 +3,7 @@ public with sharing class IntegrationConfigController {
     private static Map<String, String> regionToUrl = new Map<String, String>{
         'US' => 'https://us1.api.clevertap.com/1/upload',
         'IN' => 'https://in1.api.clevertap.com/1/upload',
-        'EU' => 'https://api.clevertap.com/1/upload',
+        'EU' => 'https://eu1.api.clevertap.com/1/upload',
         'SG' => 'https://sg1.api.clevertap.com/1/upload',
         'UAE' => 'https://mec1.api.clevertap.com/1/upload',
         'ID' => 'https://aps3.api.clevertap.com/1/upload'
@@ -28,6 +28,20 @@ public with sharing class IntegrationConfigController {
         } catch (Exception e) {
             throw new AuraHandledException('Error fetching configurations: ' + e.getMessage());
         }
+    }
+
+    /**
+     * @description Validates CleverTap credentials before saving them
+     * @param region The CleverTap region
+     * @param accountId The CleverTap Account ID
+     * @param passcode The CleverTap Passcode
+     * @return ValidationResult with status and message
+     */
+    @AuraEnabled
+    public static CleverTapCredentialValidator.ValidationResult validateCredentials(
+        String region, String accountId, String passcode
+    ) {
+        return CleverTapCredentialValidator.validateCredentials(region, accountId, passcode);
     }
 
     @AuraEnabled
