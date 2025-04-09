@@ -544,7 +544,7 @@ public class CleverTapHistoricalSyncBatch implements Database.Batchable<SObject>
      */
     public void finish(Database.BatchableContext bc) {
         // Create a log entry for the historical sync
-        createSummaryLog();
+        //createSummaryLog();
         
         // Create detailed logs
         createDetailedLogs();

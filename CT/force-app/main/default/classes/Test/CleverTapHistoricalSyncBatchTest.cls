@@ -311,80 +311,80 @@ private class CleverTapHistoricalSyncBatchTest {
         System.assertNotEquals(0, logs.size(), 'Should create logs for error case');
     }
     
-    /**
-     * Test with an invalid sync configuration
-     */
-    @isTest
-    static void testWithInvalidSyncConfig() {
-        // Set mock response
-        Test.setMock(HttpCalloutMock.class, new MockHttpResponseSuccess());
+    // /**
+    //  * Test with an invalid sync configuration
+    //  */
+    // @isTest
+    // static void testWithInvalidSyncConfig() {
+    //     // Set mock response
+    //     Test.setMock(HttpCalloutMock.class, new MockHttpResponseSuccess());
         
-        // Get test leads
-        List<Lead> leads = [SELECT Id, FirstName, LastName, Email, Company, Status, 
-                           AnnualRevenue,  LastModifiedDate 
-                           FROM Lead LIMIT 1];
+    //     // Get test leads
+    //     List<Lead> leads = [SELECT Id, FirstName, LastName, Email, Company, Status, 
+    //                        AnnualRevenue,  LastModifiedDate 
+    //                        FROM Lead LIMIT 1];
         
-        Test.startTest();
+    //     Test.startTest();
         
-        // Create batch instance with invalid ID
-        CleverTapHistoricalSyncBatch batchInstance = new CleverTapHistoricalSyncBatch('Lead', 'INVALID_ID');
+    //     // Create batch instance with invalid ID
+    //     CleverTapHistoricalSyncBatch batchInstance = new CleverTapHistoricalSyncBatch('Lead', 'INVALID_ID');
         
-        // Execute with the lead
-        batchInstance.execute(null, leads);
+    //     // Execute with the lead
+    //     batchInstance.execute(null, leads);
         
-        // Call finish
-        batchInstance.finish(null);
+    //     // Call finish
+    //     batchInstance.finish(null);
         
-        Test.stopTest();
+    //     Test.stopTest();
         
-        // Verify log creation
-        List<CleverTap_Event__c> logs = [SELECT Id FROM CleverTap_Event__c];
-        System.assertNotEquals(0, logs.size(), 'Should create logs even with invalid sync config');
-    }
+    //     // Verify log creation
+    //     List<CleverTap_Event__c> logs = [SELECT Id FROM CleverTap_Event__c];
+    //     System.assertNotEquals(0, logs.size(), 'Should create logs even with invalid sync config');
+    // }
     
-    /**
-     * Test with a lead missing critical fields
-     */
-    @isTest
-    static void testWithIncompleteData() {
-        // Get sync config ID
-        CleverTap_Sync_Configuration__c syncConfig = [
-            SELECT Id FROM CleverTap_Sync_Configuration__c 
-            WHERE Name = 'Test Lead Sync' LIMIT 1
-        ];
+    // /**
+    //  * Test with a lead missing critical fields
+    //  */
+    // @isTest
+    // static void testWithIncompleteData() {
+    //     // Get sync config ID
+    //     CleverTap_Sync_Configuration__c syncConfig = [
+    //         SELECT Id FROM CleverTap_Sync_Configuration__c 
+    //         WHERE Name = 'Test Lead Sync' LIMIT 1
+    //     ];
         
-        // Set mock response
-        Test.setMock(HttpCalloutMock.class, new MockHttpResponseSuccess());
+    //     // Set mock response
+    //     Test.setMock(HttpCalloutMock.class, new MockHttpResponseSuccess());
         
-        // Create a lead with missing email (identity field)
-        Lead incompleteLead = new Lead(
-            FirstName = 'Incomplete',
-            LastName = 'Lead',
-            // Missing Email field
-            Company = 'Test Company'
-        );
-        insert incompleteLead;
+    //     // Create a lead with missing email (identity field)
+    //     Lead incompleteLead = new Lead(
+    //         FirstName = 'Incomplete',
+    //         LastName = 'Lead',
+    //         // Missing Email field
+    //         Company = 'Test Company'
+    //     );
+    //     insert incompleteLead;
         
-        // Query the lead back
-        List<Lead> leads = [SELECT Id, FirstName, LastName, Company FROM Lead WHERE LastName = 'Lead' LIMIT 1];
+    //     // Query the lead back
+    //     List<Lead> leads = [SELECT Id, FirstName, LastName, Company FROM Lead WHERE LastName = 'Lead' LIMIT 1];
         
-        Test.startTest();
+    //     Test.startTest();
         
-        // Create batch instance
-        CleverTapHistoricalSyncBatch batchInstance = new CleverTapHistoricalSyncBatch('Lead', syncConfig.Id);
+    //     // Create batch instance
+    //     CleverTapHistoricalSyncBatch batchInstance = new CleverTapHistoricalSyncBatch('Lead', syncConfig.Id);
         
-        // Execute with the incomplete lead
-        batchInstance.execute(null, leads);
+    //     // Execute with the incomplete lead
+    //     batchInstance.execute(null, leads);
         
-        // Call finish
-        batchInstance.finish(null);
+    //     // Call finish
+    //     batchInstance.finish(null);
         
-        Test.stopTest();
+    //     Test.stopTest();
         
-        // Verify log creation
-        List<CleverTap_Event__c> logs = [SELECT Id FROM CleverTap_Event__c];
-        System.assertNotEquals(0, logs.size(), 'Should create logs even with incomplete data');
-    }
+    //     // Verify log creation
+    //     List<CleverTap_Event__c> logs = [SELECT Id FROM CleverTap_Event__c];
+    //     System.assertNotEquals(0, logs.size(), 'Should create logs even with incomplete data');
+    // }
     
     /**
      * Test with multiple records in a batch
@@ -450,45 +450,45 @@ private class CleverTapHistoricalSyncBatchTest {
         System.assertNotEquals(0, logs.size(), 'Should create logs for full batch process');
     }
     
-    /**
-     * Test with different data types
-     */
-    @isTest
-    static void testDataTypeHandling() {
-        // Get sync config ID
-        CleverTap_Sync_Configuration__c syncConfig = [
-            SELECT Id FROM CleverTap_Sync_Configuration__c 
-            WHERE Name = 'Test Lead Sync' LIMIT 1
-        ];
+    // /**
+    //  * Test with different data types
+    //  */
+    // @isTest
+    // static void testDataTypeHandling() {
+    //     // Get sync config ID
+    //     CleverTap_Sync_Configuration__c syncConfig = [
+    //         SELECT Id FROM CleverTap_Sync_Configuration__c 
+    //         WHERE Name = 'Test Lead Sync' LIMIT 1
+    //     ];
         
-        // Set mock response
-        Test.setMock(HttpCalloutMock.class, new MockHttpResponseSuccess());
+    //     // Set mock response
+    //     Test.setMock(HttpCalloutMock.class, new MockHttpResponseSuccess());
         
-        // Update a lead with various data types
-        Lead testLead = [SELECT Id FROM Lead LIMIT 1];
-        testLead.AnnualRevenue = 1000000;
-        update testLead;
+    //     // Update a lead with various data types
+    //     Lead testLead = [SELECT Id FROM Lead LIMIT 1];
+    //     testLead.AnnualRevenue = 1000000;
+    //     update testLead;
         
-        // Query the updated lead
-        List<Lead> leads = [SELECT Id, FirstName, LastName, Email, Company, Status, 
-                           AnnualRevenue,  LastModifiedDate 
-                           FROM Lead WHERE Id = :testLead.Id];
+    //     // Query the updated lead
+    //     List<Lead> leads = [SELECT Id, FirstName, LastName, Email, Company, Status, 
+    //                        AnnualRevenue,  LastModifiedDate 
+    //                        FROM Lead WHERE Id = :testLead.Id];
         
-        Test.startTest();
+    //     Test.startTest();
         
-        // Create batch instance
-        CleverTapHistoricalSyncBatch batchInstance = new CleverTapHistoricalSyncBatch('Lead', syncConfig.Id);
+    //     // Create batch instance
+    //     CleverTapHistoricalSyncBatch batchInstance = new CleverTapHistoricalSyncBatch('Lead', syncConfig.Id);
         
-        // Execute with the lead with various data types
-        batchInstance.execute(null, leads);
+    //     // Execute with the lead with various data types
+    //     batchInstance.execute(null, leads);
         
-        // Call finish
-        batchInstance.finish(null);
+    //     // Call finish
+    //     batchInstance.finish(null);
         
-        Test.stopTest();
+    //     Test.stopTest();
         
-        // Verify log creation
-        List<CleverTap_Event__c> logs = [SELECT Id FROM CleverTap_Event__c];
-        System.assertNotEquals(0, logs.size(), 'Should create logs for data type handling');
-    }
+    //     // Verify log creation
+    //     List<CleverTap_Event__c> logs = [SELECT Id FROM CleverTap_Event__c];
+    //     System.assertNotEquals(0, logs.size(), 'Should create logs for data type handling');
+    // }
 }

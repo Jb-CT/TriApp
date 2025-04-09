@@ -8,4 +8,9 @@
         <tab>CleverTap_Settings</tab>
         <visibility>DefaultOn</visibility>
     </tabVisibilities>
+        <applicationVisibilities>
+        <application>CleverTapIntegration</application>
+        <default>false</default>
+        <visible>true</visible>
+    </applicationVisibilities>
 </Profile>

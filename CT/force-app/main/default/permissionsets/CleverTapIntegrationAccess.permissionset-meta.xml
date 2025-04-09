@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<PermissionSet xmlns="http://soap.sforce.com/2006/04/metadata">
+    <description>Provides access to CleverTap tabs and objects</description>
+    <hasActivationRequired>false</hasActivationRequired>
+    <label>CleverTap Access</label>
+    <tabSettings>
+        <tab>CleverTap_Settings</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
+    <tabSettings>
+        <tab>CleverTap_Event_Logs</tab>
+        <visibility>Visible</visibility>
+    </tabSettings>
+</PermissionSet>

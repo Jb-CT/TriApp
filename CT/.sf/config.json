@@ -1,3 +1,4 @@
 {
-  "target-org": "T"
+  "target-org": "testpackage",
+  "target-dev-hub": "DevHub"
 }
